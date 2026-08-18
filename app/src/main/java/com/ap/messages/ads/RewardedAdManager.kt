@@ -30,9 +30,11 @@ object RewardedAdManager {
             else -> null
         }
         if (blockedReason != null) {
+            AdRuntimeReleaseLog.placementBlocked(placement.name, blockedReason)
             log(placement, "loadStarted=false blockedReason=$blockedReason")
             return
         }
+        AdRuntimeReleaseLog.placementReady(placement.name)
 
         loading += placement
         load(context.applicationContext, placement, AdLoadSource.PRIMARY)
@@ -46,6 +48,7 @@ object RewardedAdManager {
         }
         log(placement, "loadStarted=true", source)
         AdDebug.log { "AdLoad format=$format source=$source started" }
+        AdRuntimeReleaseLog.adRequest(format, source)
         RewardedAd.load(
             context,
             AdUnitIds.rewarded(placement, source),
@@ -61,6 +64,7 @@ object RewardedAdManager {
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     ads.remove(placement)
                     sources.remove(placement)
+                    AdRuntimeReleaseLog.loadError(format, source, error)
                     AdDebug.log {
                         "AdLoad format=$format source=$source failed code=${error.code}"
                     }
@@ -115,6 +119,7 @@ object RewardedAdManager {
             else -> null
         }
         if (bypassReason != null) {
+            AdRuntimeReleaseLog.placementBlocked(placement.name, bypassReason)
             log(placement, "blockedReason=$bypassReason")
             onBypass()
             return
@@ -127,6 +132,7 @@ object RewardedAdManager {
             else -> null
         }
         if (runtimeBlockedReason != null) {
+            AdRuntimeReleaseLog.placementBlocked(placement.name, runtimeBlockedReason)
             log(placement, "blockedReason=$runtimeBlockedReason")
             onUnavailable()
             preload(activity, placement)
@@ -135,6 +141,10 @@ object RewardedAdManager {
 
         val loaded = ads[placement]
         if (loaded == null || activity.isFinishing || activity.isDestroyed) {
+            AdRuntimeReleaseLog.placementBlocked(
+                placement.name,
+                if (loaded == null) "ad_not_ready" else "activity_unavailable"
+            )
             log(
                 placement,
                 "blockedReason=${if (loaded == null) "ad_not_ready" else "activity_unavailable"}"
@@ -144,6 +154,7 @@ object RewardedAdManager {
             return
         }
         if (!FullScreenAdCoordinator.tryAcquire(FullScreenAdType.REWARDED)) {
+            AdRuntimeReleaseLog.placementBlocked(placement.name, "full_screen_active")
             log(
                 placement,
                 "blockedReason=full_screen_active currentOwner=${FullScreenAdCoordinator.activeType()}"
@@ -151,6 +162,7 @@ object RewardedAdManager {
             onUnavailable()
             return
         }
+        AdRuntimeReleaseLog.placementReady(placement.name)
         AdRuntime.suppressNextAppOpen()
         ads.remove(placement)
         var rewarded = false

@@ -43,10 +43,23 @@ object AppOpenAdManager {
                 "consent=$consent sdkReady=$sdkReady loading=$loading ready=$ready " +
                 "source=${adSource ?: loadingSource ?: "NONE"}"
         }
-        if (loading || ready || !config.masterEnabled || !config.appOpen.enabled ||
-            !typeAllowed || premium || !AdRuntime.areAdsAllowed() || !consent || !sdkReady ||
-            !AdSessionManager.canShowNonRewarded(config)
-        ) return
+        val blockedReason = when {
+            loading -> "load_in_progress"
+            ready -> "already_ready"
+            !config.masterEnabled -> "ads_master_disabled"
+            !config.appOpen.enabled -> "placement_disabled"
+            !typeAllowed -> "ad_type_not_app_open"
+            premium || !AdRuntime.areAdsAllowed() -> "premium_ads_suppressed"
+            !consent -> "can_request_ads_false"
+            !sdkReady -> "mobile_ads_not_ready"
+            !AdSessionManager.canShowNonRewarded(config) -> "session_global_cap"
+            else -> null
+        }
+        if (blockedReason != null) {
+            AdRuntimeReleaseLog.placementBlocked(AdPlacement.APP_OPEN.name, blockedReason)
+            return
+        }
+        AdRuntimeReleaseLog.placementReady(AdPlacement.APP_OPEN.name)
         loading = true
         load(context.applicationContext, AdLoadSource.PRIMARY)
     }
@@ -59,6 +72,7 @@ object AppOpenAdManager {
         }
         loadingSource = source
         AdDebug.log { "AdLoad format=APP_OPEN source=$source started" }
+        AdRuntimeReleaseLog.adRequest("APP_OPEN", source)
         AppOpenAd.load(
             context,
             AdUnitIds.appOpen(source),
@@ -76,6 +90,7 @@ object AppOpenAdManager {
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     ad = null
                     adSource = null
+                    AdRuntimeReleaseLog.loadError("APP_OPEN", source, error)
                     AdDebug.log {
                         "AdLoad format=APP_OPEN source=$source failed code=${error.code}"
                     }
@@ -157,6 +172,7 @@ object AppOpenAdManager {
         }
         if (!typeAllowed) adTypes.logBlocked(AdTypePlacement.APP_OPEN)
         if (!eligible || !ready) {
+            AdRuntimeReleaseLog.placementBlocked(AdPlacement.APP_OPEN.name, blockedReason)
             AdDebug.log {
                 "AppOpen show reason=${reason.logValue} eligible=$eligible ready=$ready " +
                     "coordinatorFree=$coordinatorFree shown=false blockedReason=$blockedReason"
@@ -164,6 +180,7 @@ object AppOpenAdManager {
             preload(activity, "show_${reason.logValue}_blocked")
             return false
         }
+        AdRuntimeReleaseLog.placementReady(AdPlacement.APP_OPEN.name)
 
         val loaded = ad ?: return false
         val loadedSource = adSource

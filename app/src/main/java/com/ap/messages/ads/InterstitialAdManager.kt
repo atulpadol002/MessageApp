@@ -23,11 +23,22 @@ object InterstitialAdManager {
             adTypes.allows(AdTypePlacement.ONBOARDING, AdType.INTERSTITIAL)
         val autoEnabled = AutoInterstitialManager.isEnabledForCurrentSession() &&
             adTypes.allows(AdTypePlacement.AUTO_INTERSTITIAL, AdType.INTERSTITIAL)
-        if (loading || ad != null || !AdRuntime.canLoadAds() ||
-            !config.masterEnabled ||
-            (!normalEnabled && !onboardingEnabled && !autoEnabled) ||
-            !AdSessionManager.canShowNonRewarded(config)
-        ) return
+        val blockedReason = when {
+            loading -> "load_in_progress"
+            ad != null -> "already_ready"
+            !AdRuntime.areAdsAllowed() -> "premium_ads_suppressed"
+            !AdConsentManager.canRequestAds.value -> "can_request_ads_false"
+            !AdRuntime.mobileAdsReady.value -> "mobile_ads_not_ready"
+            !config.masterEnabled -> "ads_master_disabled"
+            !normalEnabled && !onboardingEnabled && !autoEnabled -> "placements_disabled"
+            !AdSessionManager.canShowNonRewarded(config) -> "session_global_cap"
+            else -> null
+        }
+        if (blockedReason != null) {
+            AdRuntimeReleaseLog.placementBlocked("INTERSTITIAL_PRELOAD", blockedReason)
+            return
+        }
+        AdRuntimeReleaseLog.placementReady("INTERSTITIAL_PRELOAD")
         loading = true
         load(context.applicationContext, AdLoadSource.PRIMARY)
     }
@@ -38,6 +49,7 @@ object InterstitialAdManager {
             return
         }
         AdDebug.log { "AdLoad format=INTERSTITIAL source=$source started" }
+        AdRuntimeReleaseLog.adRequest("INTERSTITIAL", source)
         InterstitialAd.load(
             context,
             AdUnitIds.interstitial(source),
@@ -52,6 +64,7 @@ object InterstitialAdManager {
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     ad = null
                     adSource = null
+                    AdRuntimeReleaseLog.loadError("INTERSTITIAL", source, error)
                     AdDebug.log {
                         "AdLoad format=INTERSTITIAL source=$source failed code=${error.code}"
                     }
@@ -82,6 +95,7 @@ object InterstitialAdManager {
         val adTypes = AdRemoteConfigManager.adTypeConfig.value
         val sessionAllowed = AdSessionManager.canShowNonRewarded(config)
         if (!activitySafe) {
+            AdRuntimeReleaseLog.placementBlocked("INTERSTITIAL_TRANSITION", "activity_not_safe")
             AutoInterstitialManager.onBlocked("activity is not presentation-safe")
             proceed()
             preload(activity)
@@ -125,6 +139,20 @@ object InterstitialAdManager {
         if (!config.masterEnabled || !placement.enabled || !normalTypeAllowed ||
             !AdRuntime.canLoadAds() || !sessionAllowed
         ) {
+            val normalBlockedReason = when {
+                !config.masterEnabled -> "ads_master_disabled"
+                !placement.enabled -> "placement_disabled"
+                !normalTypeAllowed -> "ad_type_not_interstitial"
+                !AdRuntime.areAdsAllowed() -> "premium_ads_suppressed"
+                !AdConsentManager.canRequestAds.value -> "can_request_ads_false"
+                !AdRuntime.mobileAdsReady.value -> "mobile_ads_not_ready"
+                !sessionAllowed -> "session_global_cap"
+                else -> "not_eligible"
+            }
+            AdRuntimeReleaseLog.placementBlocked(
+                AdPlacement.INTERSTITIAL.name,
+                normalBlockedReason
+            )
             proceed()
             preload(activity)
             return
@@ -137,15 +165,29 @@ object InterstitialAdManager {
             session.count(AdPlacement.INTERSTITIAL) < placement.maxPerSession
         val loaded = ad
         if (!canShow || loaded == null || activity.isFinishing || activity.isDestroyed) {
+            val normalBlockedReason = when {
+                !canShow -> "frequency_interval_or_cap"
+                loaded == null -> "ad_not_ready"
+                else -> "activity_unavailable"
+            }
+            AdRuntimeReleaseLog.placementBlocked(
+                AdPlacement.INTERSTITIAL.name,
+                normalBlockedReason
+            )
             proceed()
             preload(activity)
             return
         }
         if (!FullScreenAdCoordinator.tryAcquire(FullScreenAdType.NORMAL_INTERSTITIAL)) {
+            AdRuntimeReleaseLog.placementBlocked(
+                AdPlacement.INTERSTITIAL.name,
+                "full_screen_active"
+            )
             proceed()
             preload(activity)
             return
         }
+        AdRuntimeReleaseLog.placementReady(AdPlacement.INTERSTITIAL.name)
         AdRuntime.suppressNextAppOpen()
         ad = null
         adSource = null
@@ -197,11 +239,16 @@ object InterstitialAdManager {
             else -> null
         }
         if (blockedReason != null) {
+            AdRuntimeReleaseLog.placementBlocked(
+                AdPlacement.AUTO_INTERSTITIAL.name,
+                blockedReason.replace(' ', '_')
+            )
             AutoInterstitialManager.onBlocked(blockedReason)
             proceed()
             preload(activity)
             return
         }
+        AdRuntimeReleaseLog.placementReady(AdPlacement.AUTO_INTERSTITIAL.name)
         checkNotNull(loaded)
         if (!FullScreenAdCoordinator.tryAcquire(FullScreenAdType.AUTO_INTERSTITIAL)) {
             AutoInterstitialManager.onBlocked("another full-screen presentation acquired the gate")
@@ -270,13 +317,36 @@ object InterstitialAdManager {
             session.count(AdPlacement.ONBOARDING_INTERSTITIAL) >= placement.maxPerSession ||
             loaded == null || activity.isFinishing || activity.isDestroyed
         ) {
+            val onboardingBlockedReason = when {
+                !activitySafe -> "activity_not_safe"
+                !config.masterEnabled -> "ads_master_disabled"
+                !placement.enabled -> "placement_disabled"
+                !typeAllowed -> "ad_type_not_interstitial"
+                !AdRuntime.areAdsAllowed() -> "premium_ads_suppressed"
+                !AdConsentManager.canRequestAds.value -> "can_request_ads_false"
+                !AdRuntime.mobileAdsReady.value -> "mobile_ads_not_ready"
+                !AdSessionManager.canShowNonRewarded(config) -> "session_global_cap"
+                session.count(AdPlacement.ONBOARDING_INTERSTITIAL) >=
+                    placement.maxPerSession -> "placement_cap"
+                loaded == null -> "ad_not_ready"
+                else -> "activity_unavailable"
+            }
+            AdRuntimeReleaseLog.placementBlocked(
+                AdPlacement.ONBOARDING_INTERSTITIAL.name,
+                onboardingBlockedReason
+            )
             preload(activity)
             return false
         }
         if (!FullScreenAdCoordinator.tryAcquire(FullScreenAdType.ONBOARDING_INTERSTITIAL)) {
+            AdRuntimeReleaseLog.placementBlocked(
+                AdPlacement.ONBOARDING_INTERSTITIAL.name,
+                "full_screen_active"
+            )
             preload(activity)
             return false
         }
+        AdRuntimeReleaseLog.placementReady(AdPlacement.ONBOARDING_INTERSTITIAL.name)
         AdRuntime.suppressNextAppOpen()
         ad = null
         adSource = null

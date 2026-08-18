@@ -180,6 +180,7 @@ private class BannerInstance(
                         "source=$source code=${error.code} domain=${error.domain} " +
                         "responseInfo=${error.responseInfo}"
                 }
+                AdRuntimeReleaseLog.loadError("BANNER", source, error)
                 if (
                     source == AdLoadSource.PRIMARY &&
                     AdUnitIds.hasDistinctBackup(AdUnitIds.banner, AdUnitIds.bannerBackup)
@@ -202,6 +203,7 @@ private class BannerInstance(
                 }
             }
         }
+        AdRuntimeReleaseLog.adRequest("BANNER", source)
         next.loadAd(AdRequest.Builder().build())
     }
 
@@ -287,6 +289,7 @@ fun BannerAd(
         session.nonRewardedShown
     ) {
         if (shouldShow) {
+            AdRuntimeReleaseLog.placementReady(placement.name)
             val instance = lease.instance ?: hostState.getOrCreate(placement, widthDp).also {
                 lease.instance = it
             }
@@ -310,6 +313,7 @@ fun BannerAd(
                 }
             }
             if (!requestAllowed) {
+                AdRuntimeReleaseLog.placementBlocked(placement.name, reason)
                 AdDebug.log {
                     "BannerAd blocked: placement=$placement enabled=$enabled " +
                         "master=${config.masterEnabled} consent=$consent sdkReady=$adsReady " +

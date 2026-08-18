@@ -6,6 +6,20 @@ plugins {
 
 }
 
+import java.util.Properties
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.isFile) {
+    keystorePropertiesFile.inputStream().use(keystoreProperties::load)
+}
+
+fun requiredSigningProperty(name: String): String =
+    keystoreProperties.getProperty(name)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: error("Missing required release signing property: $name in ${keystorePropertiesFile.path}")
+
 val umpDebugGeography = providers.gradleProperty("umpDebugGeography")
     .orNull
     ?.trim()
@@ -22,6 +36,14 @@ val umpResetTestState = providers.gradleProperty("umpResetTestState")
     .orNull
     ?.toBooleanStrictOrNull()
     ?: false
+val admobTestDeviceHash = providers.gradleProperty("admobTestDeviceHash")
+    .orNull
+    ?.trim()
+    ?.uppercase()
+    .orEmpty()
+require(admobTestDeviceHash.isEmpty() || admobTestDeviceHash.matches(Regex("[A-F0-9]{32}"))) {
+    "admobTestDeviceHash must be a 32-character hexadecimal Google Mobile Ads test-device hash"
+}
 
 android {
     namespace = "com.ap.messages"
@@ -32,7 +54,7 @@ android {
         applicationId = "com.ap.messages"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
+        versionCode = 4
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -43,11 +65,19 @@ android {
             buildConfigField("String", "UMP_DEBUG_GEOGRAPHY", "\"$umpDebugGeography\"")
             buildConfigField("String", "UMP_TEST_DEVICE_HASH", "\"$umpTestDeviceHash\"")
             buildConfigField("boolean", "UMP_RESET_TEST_STATE", umpResetTestState.toString())
+            buildConfigField("String", "ADMOB_TEST_DEVICE_HASH", "\"$admobTestDeviceHash\"")
         }
         release {
+            signingConfig = signingConfigs.create("release") {
+                storeFile = rootProject.file(requiredSigningProperty("storeFile"))
+                storePassword = requiredSigningProperty("storePassword")
+                keyAlias = requiredSigningProperty("keyAlias")
+                keyPassword = requiredSigningProperty("keyPassword")
+            }
             buildConfigField("String", "UMP_DEBUG_GEOGRAPHY", "\"DISABLED\"")
             buildConfigField("String", "UMP_TEST_DEVICE_HASH", "\"\"")
             buildConfigField("boolean", "UMP_RESET_TEST_STATE", "false")
+            buildConfigField("String", "ADMOB_TEST_DEVICE_HASH", "\"$admobTestDeviceHash\"")
             optimization {
                 enable = false
             }

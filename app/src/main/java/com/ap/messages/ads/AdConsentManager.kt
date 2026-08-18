@@ -200,6 +200,7 @@ object AdConsentManager {
     }
 
     private fun finishConsentRequest(allowed: Boolean) {
+        AdRuntimeReleaseLog.ump(allowed)
         val callbacks = synchronized(this) {
             requestCompleted = true
             val pendingCallbacks = completionCallbacks.toList()

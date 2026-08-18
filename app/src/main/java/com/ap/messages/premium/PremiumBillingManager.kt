@@ -3,6 +3,7 @@ package com.ap.messages.premium
 import android.app.Activity
 import android.content.Context
 import com.ap.messages.ads.AdRuntime
+import com.ap.messages.ads.AdRuntimeReleaseLog
 import com.ap.messages.ads.FullScreenAdCoordinator
 import com.ap.messages.ads.FullScreenAdType
 import com.android.billingclient.api.AcknowledgePurchaseParams
@@ -298,6 +299,7 @@ object PremiumBillingManager : PurchasesUpdatedListener {
     private fun setEntitlement(status: PremiumEntitlementStatus, message: String?) {
         _adsAllowed.value = status != PremiumEntitlementStatus.ACTIVE &&
             status != PremiumEntitlementStatus.CHECKING
+        AdRuntimeReleaseLog.premium(_adsAllowed.value)
         _state.value = _state.value.copy(entitlementStatus = status, message = message)
     }
 

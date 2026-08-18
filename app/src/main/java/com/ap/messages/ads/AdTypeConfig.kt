@@ -84,13 +84,17 @@ class AdTypeConfig private constructor(
         )
 
         fun parse(json: String): AdTypeConfig {
+            return parseValidated(json) ?: CurrentBehaviorFallback
+        }
+
+        fun parseValidated(json: String): AdTypeConfig? {
             val root = runCatching { JSONObject(json) }.getOrElse { error ->
                 AdDebug.log {
                     "AdType config fallback reason=malformed_json " +
                         "error=${error.javaClass.simpleName}"
                 }
                 logParsed(CurrentBehaviorFallback)
-                return CurrentBehaviorFallback
+                return null
             }
             if (root.length() == 0) {
                 AdDebug.log {

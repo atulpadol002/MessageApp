@@ -50,10 +50,22 @@ fun NativeAdCard(
     val consent by AdConsentManager.canRequestAds.collectAsState()
     val adsAllowed by AdRuntime.adsAllowed.collectAsState()
     val session by AdSessionManager.snapshot.collectAsState()
-    if (!enabled || maxPerSession <= 0 || session.count(placement) >= maxPerSession ||
-        !adsAllowed || !config.masterEnabled || !adsReady || !consent ||
-        !AdSessionManager.canShowNonRewarded(config)
-    ) return
+    val blockedReason = when {
+        !enabled -> "placement_disabled"
+        maxPerSession <= 0 -> "placement_cap_zero"
+        session.count(placement) >= maxPerSession -> "placement_cap_reached"
+        !adsAllowed -> "premium_ads_suppressed"
+        !config.masterEnabled -> "ads_master_disabled"
+        !adsReady -> "mobile_ads_not_ready"
+        !consent -> "can_request_ads_false"
+        !AdSessionManager.canShowNonRewarded(config) -> "session_global_cap"
+        else -> null
+    }
+    if (blockedReason != null) {
+        AdRuntimeReleaseLog.placementBlocked(placement.name, blockedReason)
+        return
+    }
+    AdRuntimeReleaseLog.placementReady(placement.name)
 
     val context = LocalContext.current
     val currentOnLoaded by rememberUpdatedState(onLoaded)
@@ -88,6 +100,7 @@ fun NativeAdCard(
 
                     override fun onAdFailedToLoad(error: LoadAdError) {
                         nativeAd = null
+                        AdRuntimeReleaseLog.loadError("NATIVE", source, error)
                         AdDebug.log {
                             "AdLoad format=NATIVE source=$source failed code=${error.code}"
                         }
@@ -101,6 +114,7 @@ fun NativeAdCard(
                     }
                 })
                 .build()
+                .also { AdRuntimeReleaseLog.adRequest("NATIVE", source) }
                 .loadAd(AdRequest.Builder().build())
         }
 

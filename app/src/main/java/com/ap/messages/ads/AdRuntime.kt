@@ -2,7 +2,9 @@ package com.ap.messages.ads
 
 import android.app.Activity
 import android.content.Context
+import com.ap.messages.BuildConfig
 import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.RequestConfiguration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,8 +58,22 @@ object AdRuntime {
             return
         }
         initializationStarted = true
+        val testDeviceHash = BuildConfig.ADMOB_TEST_DEVICE_HASH
+        val testDeviceConfigured = testDeviceHash.isNotEmpty()
+        if (testDeviceConfigured) {
+            MobileAds.setRequestConfiguration(
+                RequestConfiguration.Builder()
+                    .setTestDeviceIds(listOf(testDeviceHash))
+                    .build()
+            )
+        }
+        AdRuntimeReleaseLog.testDeviceConfigured(testDeviceConfigured)
+        AdRuntimeReleaseLog.mobileAdsInitializationStarted(
+            AdConsentManager.canRequestAds.value
+        )
         AdDebug.log { "MobileAds.initialize start; canRequestAds=${AdConsentManager.canRequestAds.value}" }
         MobileAds.initialize(context) { initializationStatus ->
+            AdRuntimeReleaseLog.mobileAdsInitializationCompleted()
             AdDebug.log { "MobileAds.initialize completion" }
             initializationStatus.adapterStatusMap.forEach { (adapter, status) ->
                 AdDebug.log {
