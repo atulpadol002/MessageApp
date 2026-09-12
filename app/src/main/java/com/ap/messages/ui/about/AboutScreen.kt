@@ -26,6 +26,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ap.messages.BuildConfig
 import com.ap.messages.R
+import com.ap.messages.ads.AdPlacement
+import com.ap.messages.ads.AdRemoteConfigManager
+import com.ap.messages.ads.BannerAd
 import com.ap.messages.premium.LegalLinks
 import com.ap.messages.theme.MessageBlue
 
@@ -44,6 +49,7 @@ import com.ap.messages.theme.MessageBlue
 @Composable
 fun AboutScreen(onBackClick: () -> Unit) {
     val context = LocalContext.current
+    val adConfig by AdRemoteConfigManager.config.collectAsState()
 
     Scaffold(
         topBar = {
@@ -57,6 +63,12 @@ fun AboutScreen(onBackClick: () -> Unit) {
                         )
                     }
                 }
+            )
+        },
+        bottomBar = {
+            BannerAd(
+                placement = AdPlacement.ABOUT_BANNER,
+                enabled = adConfig.aboutBanner.enabled
             )
         }
     ) { paddingValues ->

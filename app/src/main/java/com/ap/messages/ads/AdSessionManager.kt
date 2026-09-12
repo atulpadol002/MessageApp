@@ -8,6 +8,7 @@ enum class AdPlacement {
     HOME_BANNER,
     HOME_SURFACE_NATIVE,
     HOME_NATIVE,
+    SEARCH_NATIVE,
     ARCHIVE_NATIVE,
     ARCHIVE_BANNER,
     BLOCKED_BANNER,
@@ -15,9 +16,17 @@ enum class AdPlacement {
     STARRED_BANNER,
     STARRED_NATIVE,
     SCHEDULED_BANNER,
+    CHAT_BANNER,
+    CHAT_NATIVE,
     SERVICE_CHAT_NATIVE,
+    CONTACT_PICKER_BANNER,
+    SETTINGS_BANNER,
+    ABOUT_BANNER,
+    PERMISSION_BANNER,
+    EXIT_DIALOG_BANNER,
     AUTO_INTERSTITIAL,
     INTERSTITIAL,
+    INTERSTITIAL_SPLASH,
     ONBOARDING_INTERSTITIAL,
     APP_OPEN,
     REWARDED_RESTORE,
@@ -53,7 +62,9 @@ object AdSessionManager {
             counts = current.counts + (placement to current.count(placement) + 1),
             lastInterstitialShownAt = if (
                 placement == AdPlacement.INTERSTITIAL ||
-                placement == AdPlacement.AUTO_INTERSTITIAL
+                placement == AdPlacement.AUTO_INTERSTITIAL ||
+                placement == AdPlacement.INTERSTITIAL_SPLASH ||
+                placement == AdPlacement.ONBOARDING_INTERSTITIAL
             ) {
                 System.currentTimeMillis()
             } else current.lastInterstitialShownAt,

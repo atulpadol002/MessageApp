@@ -78,9 +78,12 @@ android {
             buildConfigField("String", "UMP_TEST_DEVICE_HASH", "\"\"")
             buildConfigField("boolean", "UMP_RESET_TEST_STATE", "false")
             buildConfigField("String", "ADMOB_TEST_DEVICE_HASH", "\"$admobTestDeviceHash\"")
-            optimization {
-                enable = false
-            }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 

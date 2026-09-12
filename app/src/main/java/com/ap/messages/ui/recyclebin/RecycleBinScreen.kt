@@ -96,6 +96,7 @@ fun RecycleBinScreen(
         val host = activity
         if (host == null) {
             RewardedAdManager.logActivityUnavailable(placement)
+            action()
             return
         }
         RewardedAdManager.showOrFallback(
@@ -103,7 +104,7 @@ fun RecycleBinScreen(
             placement = placement,
             onReward = action,
             onBypass = action,
-            onUnavailable = {}
+            onUnavailable = action
         )
     }
     BackHandler(enabled = selectionMode) { selectedIds = emptySet() }

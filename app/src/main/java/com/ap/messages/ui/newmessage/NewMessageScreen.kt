@@ -21,6 +21,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ap.messages.ads.AdPlacement
+import com.ap.messages.ads.AdRemoteConfigManager
+import com.ap.messages.ads.BannerAd
 import com.ap.messages.ui.components.ContactCard
 import com.ap.messages.viewmodel.ContactViewModel
 import com.ap.messages.viewmodel.ContactUiState
@@ -33,6 +36,7 @@ fun NewMessageScreen(
 ) {
     val viewModel: ContactViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
+    val adConfig by AdRemoteConfigManager.config.collectAsState()
     val contacts = (uiState as? ContactUiState.Content)?.contacts.orEmpty()
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -49,35 +53,43 @@ fun NewMessageScreen(
     BackHandler { handleBack() }
     LaunchedEffect(searching) { if (searching) focusRequester.requestFocus() }
 
-    Scaffold(topBar = {
-        TopAppBar(
-            navigationIcon = {
-                IconButton(onClick = { handleBack() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, if (searching) "Close search" else "Back")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = { handleBack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, if (searching) "Close search" else "Back")
+                    }
+                },
+                title = {
+                    if (searching) {
+                        BasicTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            decorationBox = { inner -> if (query.isEmpty()) Text("Search contacts", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() }
+                        )
+                    } else Text("New Message")
+                },
+                actions = {
+                    if (searching && query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") }
+                    } else if (!searching) {
+                        IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, "Search contacts") }
+                    }
                 }
-            },
-            title = {
-                if (searching) {
-                    BasicTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        decorationBox = { inner -> if (query.isEmpty()) Text("Search contacts", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() }
-                    )
-                } else Text("New Message")
-            },
-            actions = {
-                if (searching && query.isNotEmpty()) {
-                    IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search") }
-                } else if (!searching) {
-                    IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, "Search contacts") }
-                }
-            }
-        )
-    }) { padding ->
+            )
+        },
+        bottomBar = {
+            BannerAd(
+                placement = AdPlacement.CONTACT_PICKER_BANNER,
+                enabled = adConfig.contactPickerBanner.enabled
+            )
+        }
+    ) { padding ->
         when (uiState) {
         ContactUiState.InitialLoading -> {
             androidx.compose.foundation.layout.Box(

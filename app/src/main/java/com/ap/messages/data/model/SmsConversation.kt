@@ -6,5 +6,6 @@ data class SmsConversation(
     val body: String,
     val date: Long,
     val read: Boolean,
-    val unreadCount: Int
+    val unreadCount: Int,
+    val draft: String? = null
 )

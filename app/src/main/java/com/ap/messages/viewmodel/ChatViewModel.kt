@@ -107,6 +107,8 @@ class ChatViewModel(
     private var currentConversationId:
             Long? = null
 
+    fun getCurrentConversationId(): Long = currentConversationId ?: 0L
+
     private var currentPhoneNumber:
             String? = null
 
@@ -164,37 +166,42 @@ class ChatViewModel(
 
         _isInitialMessageLoadComplete.value = false
 
+        var targetThreadId = conversationId
+        if (targetThreadId <= 0L && phoneNumber.isNotBlank()) {
+            targetThreadId = smsRepository.getOrCreateThreadId(phoneNumber)
+        }
+
         if (
-            conversationId > 0L ||
+            targetThreadId > 0L ||
             currentConversationId == null ||
             currentConversationId == 0L
         ) {
             currentConversationId =
-                conversationId
+                targetThreadId
         }
 
         currentPhoneNumber =
             phoneNumber
 
-        loadContactAvatar(conversationId, phoneNumber, initialDisplayName)
+        loadContactAvatar(targetThreadId, phoneNumber, initialDisplayName)
 
         loadScheduledMessages(
             phoneNumber
         )
 
-        if (conversationId <= 0L) {
+        if (targetThreadId <= 0L) {
             _messages.value = emptyList()
             _isInitialMessageLoadComplete.value = true
             return
         }
 
-        consumeAndMarkThreadRead(conversationId)
+        consumeAndMarkThreadRead(targetThreadId)
 
         viewModelScope.launch {
 
             val result = try {
                 withContext(Dispatchers.IO) {
-                    repository.getMessages(conversationId)
+                    repository.getMessages(targetThreadId)
                 }
             } catch (exception: CancellationException) {
                 throw exception
@@ -205,7 +212,7 @@ class ChatViewModel(
 
             if (
                 currentConversationId ==
-                conversationId
+                targetThreadId
             ) {
                 _messages.value = mergeProviderMessages(result)
                 _isInitialMessageLoadComplete.value = true
@@ -215,9 +222,16 @@ class ChatViewModel(
 
     fun refreshMessages() {
 
-        val conversationId =
+        var conversationId =
             currentConversationId
-                ?: return
+                ?: 0L
+
+        if (conversationId <= 0L && !currentPhoneNumber.isNullOrBlank()) {
+            conversationId = smsRepository.getOrCreateThreadId(currentPhoneNumber!!)
+            if (conversationId > 0L) {
+                currentConversationId = conversationId
+            }
+        }
 
         if (conversationId <= 0L) {
             return
@@ -274,6 +288,7 @@ class ChatViewModel(
                     scheduledSms.scheduledTime >
                             System.currentTimeMillis()
                 }
+                .distinctBy { it.id }
                 .sortedBy {
                         scheduledSms ->
 
@@ -963,9 +978,11 @@ class ChatViewModel(
                         MessageStatus.SENDING
                 )
 
-            _messages.value =
-                _messages.value +
-                        optimisticMessage
+            _messages.value = if (_messages.value.any { it.id == messageId }) {
+                _messages.value.map { if (it.id == messageId) optimisticMessage else it }
+            } else {
+                _messages.value + optimisticMessage
+            }.distinctBy { it.id }
 
             dispatchSend(
                 messageId =
@@ -1254,8 +1271,9 @@ class ChatViewModel(
     }
 
     private fun mergeProviderMessages(providerMessages: List<Message>): List<Message> {
-        if (pendingTerminalStatuses.isEmpty()) return providerMessages
-        return providerMessages.map { message ->
+        val distinctProviderMessages = providerMessages.distinctBy { it.id }
+        if (pendingTerminalStatuses.isEmpty()) return distinctProviderMessages
+        return distinctProviderMessages.map { message ->
             pendingTerminalStatuses[message.id]?.let { message.copy(status = it) } ?: message
         }
     }

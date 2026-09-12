@@ -763,6 +763,7 @@ private fun ContactPickerContent(
     onBackClick: () -> Unit,
     onContactClick: (Contact) -> Unit
 ) {
+    val adConfig by AdRemoteConfigManager.config.collectAsState()
 
     Scaffold(
         topBar = {
@@ -790,6 +791,12 @@ private fun ContactPickerContent(
                         )
                     }
                 }
+            )
+        },
+        bottomBar = {
+            BannerAd(
+                placement = AdPlacement.CONTACT_PICKER_BANNER,
+                enabled = adConfig.contactPickerBanner.enabled
             )
         }
     ) { paddingValues ->

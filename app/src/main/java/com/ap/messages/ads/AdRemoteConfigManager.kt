@@ -13,6 +13,7 @@ object AdRemoteConfigManager {
     private const val CONFIG_KEY = "ads_config"
     private const val AUTO_INTERSTITIAL_CONFIG_KEY = "auto_interstitial_config"
     private const val AD_TYPE_CONFIG_KEY = "ad_type_config"
+    private const val PAYWALL_ENABLED_KEY = "paywall_enabled"
     private const val RELEASE_FETCH_INTERVAL_SECONDS = 12 * 60 * 60L
     private const val DEBUG_FETCH_INTERVAL_SECONDS = 0L
 
@@ -23,6 +24,8 @@ object AdRemoteConfigManager {
         _autoInterstitialConfig.asStateFlow()
     private val _adTypeConfig = MutableStateFlow(AdTypeConfig.CurrentBehaviorFallback)
     val adTypeConfig: StateFlow<AdTypeConfig> = _adTypeConfig.asStateFlow()
+    private val _paywallEnabled = MutableStateFlow(true)
+    val paywallEnabled: StateFlow<Boolean> = _paywallEnabled.asStateFlow()
     private val lastKnownGood = LastKnownGoodRemoteConfig(EffectiveRemoteConfig.AllOff)
     private var fetchStarted = false
     private var appContext: Context? = null
@@ -47,7 +50,8 @@ object AdRemoteConfigManager {
                 MASTER_KEY to false,
                 CONFIG_KEY to "{}",
                 AUTO_INTERSTITIAL_CONFIG_KEY to "{}",
-                AD_TYPE_CONFIG_KEY to "{}"
+                AD_TYPE_CONFIG_KEY to "{}",
+                PAYWALL_ENABLED_KEY to true
             )
         )
 
@@ -115,13 +119,19 @@ object AdRemoteConfigManager {
         val configValue = remoteConfig.getValue(CONFIG_KEY)
         val autoInterstitialValue = remoteConfig.getValue(AUTO_INTERSTITIAL_CONFIG_KEY)
         val adTypeValue = remoteConfig.getValue(AD_TYPE_CONFIG_KEY)
+        val paywallValue = remoteConfig.getValue(PAYWALL_ENABLED_KEY)
         val rawMaster = masterValue.asString()
         val rawJson = configValue.asString()
         val rawAutoInterstitialJson = autoInterstitialValue.asString()
         val rawAdTypeJson = adTypeValue.asString()
+        _paywallEnabled.value = paywallValue.asBoolean()
         AdDebug.log {
             "ads_master_enabled raw value=$rawMaster, boolean=${masterValue.asBoolean()}, " +
                 "source=${masterValue.source}"
+        }
+        AdDebug.log {
+            "paywall_enabled raw value=${paywallValue.asString()}, boolean=${paywallValue.asBoolean()}, " +
+                "source=${paywallValue.source}"
         }
         AdDebug.log { "ads_config raw JSON=$rawJson, source=${configValue.source}" }
         AdDebug.log {
@@ -178,6 +188,7 @@ object AdRemoteConfigManager {
 
     private fun logEffectiveConfig() {
         AdDebug.log { "final effective master enabled=${_config.value.masterEnabled}" }
+        AdDebug.log { "final paywall enabled=${_paywallEnabled.value}" }
         AdDebug.log { "final homeBanner.enabled=${_config.value.homeBanner.enabled}" }
         AdDebug.log {
             "final archiveNative.position=${_config.value.archiveNative.position.remoteValue}"

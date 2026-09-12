@@ -80,9 +80,9 @@ fun StarredMessagesScreen(
             AdType.BANNER -> BannerAd(
                 placement = AdPlacement.STARRED_BANNER,
                 enabled = adConfig.starredBanner.enabled,
-                visible = !selectionMode
+                visible = !selectionMode && messages.isNotEmpty()
             )
-            AdType.NATIVE -> if (!selectionMode) {
+            AdType.NATIVE -> if (!selectionMode && messages.isNotEmpty()) {
                 NativeAdCard(
                     placement = AdPlacement.STARRED_NATIVE,
                     enabled = adConfig.starredBanner.enabled,

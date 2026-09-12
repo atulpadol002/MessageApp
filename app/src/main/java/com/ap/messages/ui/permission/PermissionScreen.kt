@@ -23,8 +23,11 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -34,7 +37,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ap.messages.R
 import com.ap.messages.sms.DefaultSmsManager
+import com.ap.messages.ads.AdPlacement
+import com.ap.messages.ads.AdRemoteConfigManager
 import com.ap.messages.ads.AdRuntime
+import com.ap.messages.ads.BannerAd
 
 @Composable
 fun PermissionScreen(
@@ -45,6 +51,7 @@ fun PermissionScreen(
 ) {
 
     val context = LocalContext.current
+    val adConfig by AdRemoteConfigManager.config.collectAsState()
     val defaultSmsManager =
         DefaultSmsManager(context)
 
@@ -55,17 +62,25 @@ fun PermissionScreen(
             onPermissionStateChanged()
         }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
+    Scaffold(
+        bottomBar = {
+            BannerAd(
+                placement = AdPlacement.PERMISSION_BANNER,
+                enabled = adConfig.permissionBanner.enabled
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
 
         androidx.compose.foundation.Image(
             painter = painterResource(R.drawable.message_logo_symbol),
@@ -171,4 +186,5 @@ fun PermissionScreen(
             )
         }
     }
+}
 }

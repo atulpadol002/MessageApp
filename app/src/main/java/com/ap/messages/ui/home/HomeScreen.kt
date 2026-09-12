@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
@@ -126,6 +127,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val adConfig by AdRemoteConfigManager.config.collectAsState()
     val adTypeConfig by AdRemoteConfigManager.adTypeConfig.collectAsState()
+    val paywallEnabled by AdRemoteConfigManager.paywallEnabled.collectAsState()
     val privacyOptionsRequirementStatus by
         AdConsentManager.privacyOptionsRequirementStatus.collectAsState()
     val revokeConsentVisible =
@@ -195,10 +197,11 @@ fun HomeScreen(
         showExitDialog,
         showRateUsDialog,
         showPremiumPopup,
+        paywallEnabled,
         premiumState.entitlementStatus,
         activeFullScreen
     ) {
-        if (premiumState.isPremium && showPremiumPopup) {
+        if ((!paywallEnabled || premiumState.isPremium) && showPremiumPopup) {
             dismissPremiumPopup()
             return@LaunchedEffect
         }
@@ -208,6 +211,7 @@ fun HomeScreen(
             premiumState.entitlementStatus != PremiumEntitlementStatus.CHECKING &&
             !premiumState.isPremium && activeFullScreen == null &&
             activity.isAdPresentationSafe() &&
+            paywallEnabled &&
             PremiumPopupSession.shouldShow(context, appSessionNumber)
         if (safeToOffer && FullScreenAdCoordinator.tryAcquire(FullScreenAdType.PAYWALL_POPUP)) {
             PremiumPopupSession.markShown(context, appSessionNumber)
@@ -327,7 +331,7 @@ fun HomeScreen(
                     item {
                         DrawerItem("Messages", Icons.Default.Home, true) { closeDrawer() }
                     }
-                    item {
+                    if (paywallEnabled || premiumState.isPremium) item {
                         PremiumDrawerItem(
                             label = if (premiumState.isPremium) "My Subscription" else "Go Premium"
                         ) {
@@ -447,13 +451,15 @@ fun HomeScreen(
                         },
                         title = { SearchBar(searchText, onValueChange = { searchText = it }) },
                         actions = {
-                            IconButton(onClick = onPremiumClick) {
-                                Image(
-                                    painter = painterResource(R.drawable.premium_topbar_icon),
-                                    contentDescription = "Open Premium",
-                                    modifier = Modifier.size(40.dp),
-                                    contentScale = ContentScale.Fit
-                                )
+                            if (paywallEnabled) {
+                                IconButton(onClick = onPremiumClick) {
+                                    Image(
+                                        painter = painterResource(R.drawable.premium_topbar_icon),
+                                        contentDescription = "Open Premium",
+                                        modifier = Modifier.size(40.dp),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                }
                             }
                         }
                     )
@@ -521,8 +527,22 @@ fun HomeScreen(
                             }
                             val nativeConfig = adConfig.homeInlineNative
                             val adOrdinal = (index + 1) / nativeConfig.everyItems
+                            val searchAdIndex = if (filteredConversations.size > 1) 1 else 0
                             if (
-                                !selectionMode && nativeConfig.enabled &&
+                                !selectionMode && searchText.isNotBlank() && adConfig.searchNative.enabled &&
+                                adTypeConfig[AdTypePlacement.SEARCH] == AdType.NATIVE &&
+                                index == searchAdIndex
+                            ) {
+                                item(key = "search_native_inline") {
+                                    NativeAdCard(
+                                        placement = AdPlacement.SEARCH_NATIVE,
+                                        enabled = true,
+                                        maxPerSession = adConfig.searchNative.maxPerSession,
+                                        compact = true
+                                    )
+                                }
+                            } else if (
+                                !selectionMode && searchText.isBlank() && nativeConfig.enabled &&
                                 adTypeConfig[AdTypePlacement.HOME_INLINE] == AdType.NATIVE &&
                                 (index + 1) % nativeConfig.everyItems == 0 &&
                                 adOrdinal <= nativeConfig.maxPerSession
@@ -599,12 +619,23 @@ fun HomeScreen(
     if (showExitDialog) AlertDialog(
         onDismissRequest = { showExitDialog = false },
         title = { Text("Exit Message App?", style = MaterialTheme.typography.titleLarge) },
-        text = { Text("Are you sure you want to exit?", style = MaterialTheme.typography.bodyMedium) },
+        text = {
+            Column {
+                Text("Are you sure you want to exit?", style = MaterialTheme.typography.bodyMedium)
+                if (adConfig.exitDialogBanner.enabled) {
+                    Spacer(Modifier.height(8.dp))
+                    BannerAd(
+                        placement = AdPlacement.EXIT_DIALOG_BANNER,
+                        enabled = adConfig.exitDialogBanner.enabled
+                    )
+                }
+            }
+        },
         confirmButton = { TextButton(onClick = { showExitDialog = false; (context as? Activity)?.finish() }) { Text("Exit") } },
         dismissButton = { TextButton(onClick = { showExitDialog = false }) { Text("Cancel") } }
     )
 
-    if (showPremiumPopup) {
+    if (showPremiumPopup && paywallEnabled) {
         PremiumPaywallPopup(
             onGoPremium = {
                 dismissPremiumPopup()
@@ -624,7 +655,7 @@ private fun DrawerHeader() {
         Box(
             Modifier
                 .size(52.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp)),
+                .background(Color(0xFFEAECF0), RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center
         ) {
             Image(

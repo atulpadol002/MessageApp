@@ -18,5 +18,11 @@ keystore.properties
 .externalNativeBuild/
 .cxx/
 
+# Release outputs
+/app/release/
+*.apk
+*.aab
+
 # macOS
 .DS_Store
+

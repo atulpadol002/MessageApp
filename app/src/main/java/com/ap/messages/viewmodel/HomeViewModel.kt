@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.ap.messages.data.model.SmsConversation
 import com.ap.messages.data.preferences.ArchivePreferences
 import com.ap.messages.data.preferences.BlockedNumbersPreferences
+import com.ap.messages.data.preferences.DraftPreferences
 import com.ap.messages.data.preferences.PinnedConversationsPreferences
 import com.ap.messages.data.repository.SmsRepository
 import com.ap.messages.receiver.SmsEventBus
@@ -63,6 +64,9 @@ class HomeViewModel(
 
     private val pinnedPreferences =
         PinnedConversationsPreferences(application)
+
+    private val draftPreferences =
+        DraftPreferences(application)
 
     private val _conversations =
         MutableStateFlow<List<SmsConversation>>(
@@ -229,19 +233,70 @@ class HomeViewModel(
                                 isArchived ||
                                         isBlocked
                             }
+
+                        val threadDrafts = draftPreferences.getAllThreadDrafts()
+                        val addressDrafts = draftPreferences.getAllAddressDrafts()
+
+                        val conversationsWithDrafts = conversations.map { conversation ->
+                            val draft = threadDrafts[conversation.threadId]
+                                ?: addressDrafts[draftPreferences.normalize(conversation.address)]
+                                ?: smsRepository.getSystemDraft(conversation.threadId)
+                            if (draft != null) conversation.copy(draft = draft) else conversation
+                        }
+
+                        val existingThreadIds = conversations.map { it.threadId }.toSet()
+                        val existingAddresses = conversations.map { draftPreferences.normalize(it.address) }.toSet()
+                        val extraDraftConversations = mutableListOf<SmsConversation>()
+
+                        threadDrafts.forEach { (draftThreadId, draftText) ->
+                            if (draftThreadId !in existingThreadIds) {
+                                extraDraftConversations.add(
+                                    SmsConversation(
+                                        threadId = draftThreadId,
+                                        address = "Unknown",
+                                        body = "",
+                                        date = System.currentTimeMillis(),
+                                        read = true,
+                                        unreadCount = 0,
+                                        draft = draftText
+                                    )
+                                )
+                            }
+                        }
+                        addressDrafts.forEach { (normAddr, draftText) ->
+                            if (normAddr !in existingAddresses) {
+                                val threadId = smsRepository.getOrCreateThreadId(normAddr)
+                                if (threadId !in existingThreadIds && extraDraftConversations.none { it.threadId == threadId }) {
+                                    extraDraftConversations.add(
+                                        SmsConversation(
+                                            threadId = threadId,
+                                            address = normAddr,
+                                            body = "",
+                                            date = System.currentTimeMillis(),
+                                            read = true,
+                                            unreadCount = 0,
+                                            draft = draftText
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        val finalConversations = (conversationsWithDrafts + extraDraftConversations)
+                            .distinctBy { it.threadId }
                             .sortedWith(
                                 compareByDescending<SmsConversation> { it.threadId in pinnedIds }
                                     .thenByDescending { it.date }
                             )
 
-                        val cachedPresentations = conversations.mapNotNull { conversation ->
+                        val cachedPresentations = finalConversations.mapNotNull { conversation ->
                             contactResolver.getCached(conversation.address)?.let {
                                 conversation.threadId to it
                             }
                         }.toMap()
                         LoadResult(
-                            conversations,
-                            pinnedIds intersect validThreadIds,
+                            finalConversations,
+                            pinnedIds intersect (validThreadIds + extraDraftConversations.map { it.threadId }),
                             cachedPresentations
                         )
                     }
@@ -497,11 +552,12 @@ class HomeViewModel(
                                 body = item.optString("body"),
                                 date = item.optLong("date"),
                                 read = item.optBoolean("read", true),
-                                unreadCount = item.optInt("unreadCount", 0)
+                                unreadCount = item.optInt("unreadCount", 0),
+                                draft = item.optString("draft").takeIf { it.isNotBlank() }
                             )
                         )
                     }
-                }
+                }.distinctBy { it.threadId }
                 val namesJson = root.optJSONObject("names") ?: JSONObject()
                 val names = buildMap<Long, String> {
                     conversations.forEach { conversation ->
@@ -537,6 +593,7 @@ class HomeViewModel(
                     put("date", conversation.date)
                     put("read", conversation.read)
                     put("unreadCount", conversation.unreadCount)
+                    conversation.draft?.let { put("draft", it) }
                 })
             }
             val namesJson = JSONObject()

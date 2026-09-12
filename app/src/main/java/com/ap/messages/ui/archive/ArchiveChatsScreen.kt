@@ -108,17 +108,13 @@ fun ArchiveChatsScreen(
             when (adTypeConfig[AdTypePlacement.ARCHIVE]) {
                 AdType.BANNER -> BannerAd(
                     placement = AdPlacement.ARCHIVE_BANNER,
-                    enabled = adConfig.archiveNative.enabled &&
-                        adConfig.archiveNative.maxPerSession > 0,
+                    enabled = adConfig.archiveBanner.enabled,
                     visible = !selectionMode
                 )
-                AdType.NATIVE -> if (
-                    !selectionMode && adConfig.archiveNative.enabled &&
-                    adConfig.archiveNative.position == AdPosition.BOTTOM
-                ) {
+                AdType.NATIVE -> if (!selectionMode && adConfig.archiveNative.position == AdPosition.BOTTOM) {
                     NativeAdCard(
                         placement = AdPlacement.ARCHIVE_NATIVE,
-                        enabled = true,
+                        enabled = adConfig.archiveNative.enabled,
                         maxPerSession = adConfig.archiveNative.maxPerSession,
                         modifier = Modifier.navigationBarsPadding()
                     )
@@ -134,9 +130,7 @@ fun ArchiveChatsScreen(
             ) { Text("No archived conversations") }
             else -> LazyColumn(Modifier.fillMaxSize().padding(paddingValues)) {
                 if (
-                    !selectionMode && adConfig.archiveNative.enabled &&
-                    adTypeConfig[AdTypePlacement.ARCHIVE] == AdType.NATIVE &&
-                    adConfig.archiveNative.position == AdPosition.TOP
+                    !selectionMode && adConfig.archiveNative.enabled
                 ) {
                     item(key = "archive_native") {
                         NativeAdCard(

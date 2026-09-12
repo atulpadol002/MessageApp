@@ -19,9 +19,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ap.messages.ads.AdPlacement
+import com.ap.messages.ads.AdRemoteConfigManager
+import com.ap.messages.ads.BannerAd
 import com.ap.messages.theme.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,6 +36,8 @@ fun ThemeScreen(
     onThemeSelected: (ThemeMode) -> Unit,
     onBackClick: () -> Unit
 ) {
+    val adConfig by AdRemoteConfigManager.config.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -52,6 +59,12 @@ fun ThemeScreen(
                         )
                     }
                 }
+            )
+        },
+        bottomBar = {
+            BannerAd(
+                placement = AdPlacement.SETTINGS_BANNER,
+                enabled = adConfig.settingsBanner.enabled
             )
         }
     ) { paddingValues ->

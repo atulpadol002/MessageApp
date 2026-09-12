@@ -132,7 +132,7 @@ class SmsRepository(
         )
 
         val selection =
-            "${Telephony.Sms.THREAD_ID} = ?"
+            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.TYPE} != ${Telephony.Sms.MESSAGE_TYPE_DRAFT}"
 
         val selectionArgs =
             arrayOf(threadId.toString())
@@ -457,4 +457,36 @@ class SmsRepository(
 
             else -> Telephony.Sms.CONTENT_URI
         }
+
+    fun getOrCreateThreadId(address: String): Long {
+        if (address.isBlank()) return 0L
+        return try {
+            Telephony.Threads.getOrCreateThreadId(context, address)
+        } catch (exception: Exception) {
+            exception.printStackTrace()
+            0L
+        }
+    }
+
+    fun getSystemDraft(threadId: Long): String? {
+        if (threadId <= 0L) return null
+        return try {
+            val projection = arrayOf(Telephony.Sms.BODY)
+            val selection = "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.TYPE} = ${Telephony.Sms.MESSAGE_TYPE_DRAFT}"
+            context.contentResolver.query(
+                Telephony.Sms.CONTENT_URI,
+                projection,
+                selection,
+                arrayOf(threadId.toString()),
+                "${Telephony.Sms.DATE} DESC"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.BODY))?.takeIf { it.isNotBlank() }
+                } else null
+            }
+        } catch (exception: Exception) {
+            exception.printStackTrace()
+            null
+        }
+    }
 }

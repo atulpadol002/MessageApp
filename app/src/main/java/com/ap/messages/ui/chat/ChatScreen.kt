@@ -142,6 +142,8 @@ import com.ap.messages.ads.AdRemoteConfigManager
 import com.ap.messages.ads.AdType
 import com.ap.messages.ads.AdTypePlacement
 import com.ap.messages.ads.NativeAdCard
+import com.ap.messages.ads.BannerAd
+import com.ap.messages.data.preferences.DraftPreferences
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.activity.compose.BackHandler
@@ -207,6 +209,17 @@ fun ChatScreen(
 
     val messageText = rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
+    }
+
+    val draftPreferences = remember(context) { DraftPreferences(context) }
+
+    LaunchedEffect(conversationId, phoneNumber) {
+        if (messageText.value.text.isEmpty()) {
+            val initialDraft = draftPreferences.getDraft(conversationId, phoneNumber)
+            if (!initialDraft.isNullOrBlank()) {
+                messageText.value = TextFieldValue(initialDraft, TextRange(initialDraft.length))
+            }
+        }
     }
 
     var showEmojiPanel by rememberSaveable { mutableStateOf(false) }
@@ -303,6 +316,14 @@ fun ChatScreen(
     chatViewModel.scheduledMessages
         .collectAsState()
 
+    val displayMessages = remember(messages) {
+        messages.distinctBy { it.id }
+    }
+
+    val displayScheduledMessages = remember(scheduledMessages) {
+        scheduledMessages.distinctBy { it.id }
+    }
+
     val listState =
         rememberLazyListState()
 
@@ -329,12 +350,12 @@ fun ChatScreen(
     val trimmedSearchQuery by remember {
         derivedStateOf { searchQuery.trim() }
     }
-    val matchingMessageIds by remember(messages, trimmedSearchQuery) {
+    val matchingMessageIds by remember(displayMessages, trimmedSearchQuery) {
         derivedStateOf {
             if (trimmedSearchQuery.isEmpty()) {
                 emptyList()
             } else {
-                messages.asSequence()
+                displayMessages.asSequence()
                     .filter { it.body.contains(trimmedSearchQuery, ignoreCase = true) }
                     .map { it.id }
                     .toList()
@@ -356,8 +377,8 @@ fun ChatScreen(
         val wrappedIndex = (index + matchingMessageIds.size) % matchingMessageIds.size
         val matchId = matchingMessageIds[wrappedIndex]
         currentSearchMatchId = matchId
-        val messageIndex = messages.indexOfFirst { it.id == matchId }
-        if (messageIndex >= 0) {
+        val messageIndex = displayMessages.indexOfFirst { it.id == matchId }
+        if (messageIndex in 0 until displayMessages.size) {
             searchScrollJob?.cancel()
             searchScrollJob = coroutineScope.launch {
                 listState.animateScrollToItem(messageIndex)
@@ -365,7 +386,7 @@ fun ChatScreen(
         }
     }
 
-    val selectedMessages = messages
+    val selectedMessages = displayMessages
         .filter { it.id in selectedMessageIds }
         .sortedBy { it.timestamp }
     val allSelectedAreStarred = selectedMessages.isNotEmpty() &&
@@ -400,8 +421,8 @@ fun ChatScreen(
             currentSearchMatchId = null
         } else if (currentSearchMatchId !in matchingMessageIds) {
             currentSearchMatchId = matchingMessageIds.first()
-            val messageIndex = messages.indexOfFirst { it.id == currentSearchMatchId }
-            if (messageIndex >= 0) {
+            val messageIndex = displayMessages.indexOfFirst { it.id == currentSearchMatchId }
+            if (messageIndex in 0 until displayMessages.size) {
                 searchScrollJob?.cancel()
                 searchScrollJob = coroutineScope.launch {
                     listState.animateScrollToItem(messageIndex)
@@ -447,8 +468,12 @@ fun ChatScreen(
                     MessageNotificationManager.activateThread(context, conversationId)
                 Lifecycle.Event.ON_PAUSE,
                 Lifecycle.Event.ON_STOP,
-                Lifecycle.Event.ON_DESTROY ->
+                Lifecycle.Event.ON_DESTROY -> {
                     MessageNotificationManager.deactivateThread(conversationId)
+                    val currentText = messageText.value.text
+                    val activeThreadId = chatViewModel.getCurrentConversationId().takeIf { it > 0L } ?: conversationId
+                    draftPreferences.saveDraft(activeThreadId, phoneNumber, currentText)
+                }
                 else -> Unit
             }
         }
@@ -460,6 +485,9 @@ fun ChatScreen(
             lifecycleOwner.lifecycle.removeObserver(observer)
             MessageNotificationManager.deactivateThread(conversationId)
             searchScrollJob?.cancel()
+            val currentText = messageText.value.text
+            val activeThreadId = chatViewModel.getCurrentConversationId().takeIf { it > 0L } ?: conversationId
+            draftPreferences.saveDraft(activeThreadId, phoneNumber, currentText)
         }
     }
 
@@ -482,12 +510,12 @@ fun ChatScreen(
     }
 
     val totalItems =
-        messages.size +
-            scheduledMessages.size +
-            (if (scheduledMessages.isNotEmpty()) 1 else 0) +
+        displayMessages.size +
+            displayScheduledMessages.size +
+            (if (displayScheduledMessages.isNotEmpty()) 1 else 0) +
             (if (showServiceChatNative) 1 else 0) +
             (if (isReadOnlyAddress) 1 else 0)
-    val bottomItemIndex = totalItems - 1
+    val bottomItemIndex = (totalItems - 1).coerceAtLeast(0)
 
     LaunchedEffect(
         totalItems,
@@ -503,7 +531,9 @@ fun ChatScreen(
         }
 
         if (!initialPositioningComplete) {
-            listState.scrollToItem(bottomItemIndex)
+            if (bottomItemIndex in 0 until totalItems) {
+                listState.scrollToItem(bottomItemIndex)
+            }
             initialPositioningComplete = true
             followLatestMessage = true
         } else if (
@@ -511,7 +541,9 @@ fun ChatScreen(
             followLatestMessage &&
             !isSearchMode
         ) {
-            listState.animateScrollToItem(bottomItemIndex)
+            if (bottomItemIndex in 0 until totalItems) {
+                listState.animateScrollToItem(bottomItemIndex)
+            }
         }
         previousTotalItems = totalItems
     }
@@ -532,7 +564,9 @@ fun ChatScreen(
             followLatestMessage &&
             !isSearchMode
         ) {
-            listState.scrollToItem(bottomItemIndex)
+            if (bottomItemIndex in 0 until totalItems) {
+                listState.scrollToItem(bottomItemIndex)
+            }
         }
         previousImeBottom = imeBottom
     }
@@ -546,13 +580,19 @@ fun ChatScreen(
     ) {
         if (
             serviceChatNativeLoaded &&
-            bottomItemIndex >= 0 &&
+            totalItems > 0 &&
             initialPositioningComplete &&
             followLatestMessage &&
             !isSearchMode
         ) {
             withFrameNanos { }
-            listState.scrollToItem(bottomItemIndex)
+            val currentItemCount = listState.layoutInfo.totalItemsCount
+            val targetIndex = if (currentItemCount > 0) {
+                (currentItemCount - 1).coerceAtLeast(0)
+            } else {
+                bottomItemIndex.coerceIn(0, totalItems - 1)
+            }
+            listState.scrollToItem(targetIndex)
         }
     }
 
@@ -934,7 +974,7 @@ fun ChatScreen(
 
                 itemsIndexed(
                     items =
-                        messages,
+                        displayMessages,
                     key = { _, message ->
 
                         "sms_${message.id}"
@@ -950,7 +990,7 @@ fun ChatScreen(
                         if (index > 0) {
 
                             timestampToLocalDate(
-                                messages[index - 1]
+                                displayMessages[index - 1]
                                     .timestamp
                             )
 
@@ -1022,7 +1062,7 @@ fun ChatScreen(
                 }
 
                 if (
-                    scheduledMessages.isNotEmpty()
+                    displayScheduledMessages.isNotEmpty()
                 ) {
 
                     item(
@@ -1036,7 +1076,7 @@ fun ChatScreen(
 
                 items(
                     items =
-                        scheduledMessages,
+                        displayScheduledMessages,
                     key = { scheduledSms ->
 
                         "scheduled_${scheduledSms.id}"
@@ -1071,6 +1111,15 @@ fun ChatScreen(
                         ReadOnlyReplyFooter()
                     }
                 }
+            }
+
+            val chatAdType = adTypeConfig[AdTypePlacement.CHAT]
+            if (chatAdType == AdType.BANNER && adConfig.chatBanner.enabled) {
+                BannerAd(
+                    placement = AdPlacement.CHAT_BANNER,
+                    enabled = true,
+                    visible = imeBottom == 0 && !showEmojiPanel && selectedMessageIds.isEmpty()
+                )
             }
 
             if (isReplyCapable) {
@@ -1206,6 +1255,10 @@ fun ChatScreen(
 
                             messageText.value =
                                 TextFieldValue("")
+
+                            val activeThreadId =
+                                chatViewModel.getCurrentConversationId().takeIf { it > 0L } ?: conversationId
+                            draftPreferences.clearDraft(activeThreadId, phoneNumber)
 
                             chatViewModel.sendMessage(
                                 phoneNumber =

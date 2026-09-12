@@ -23,6 +23,7 @@ object InterstitialAdManager {
             adTypes.allows(AdTypePlacement.ONBOARDING, AdType.INTERSTITIAL)
         val autoEnabled = AutoInterstitialManager.isEnabledForCurrentSession() &&
             adTypes.allows(AdTypePlacement.AUTO_INTERSTITIAL, AdType.INTERSTITIAL)
+        val splashEnabled = config.interstitialSplash.enabled
         val blockedReason = when {
             loading -> "load_in_progress"
             ad != null -> "already_ready"
@@ -30,7 +31,7 @@ object InterstitialAdManager {
             !AdConsentManager.canRequestAds.value -> "can_request_ads_false"
             !AdRuntime.mobileAdsReady.value -> "mobile_ads_not_ready"
             !config.masterEnabled -> "ads_master_disabled"
-            !normalEnabled && !onboardingEnabled && !autoEnabled -> "placements_disabled"
+            !normalEnabled && !onboardingEnabled && !autoEnabled && !splashEnabled -> "placements_disabled"
             !AdSessionManager.canShowNonRewarded(config) -> "session_global_cap"
             else -> null
         }
@@ -368,5 +369,57 @@ object InterstitialAdManager {
             preload(activity)
         }
         return true
+    }
+
+    fun onSplashCompleted(activity: Activity, proceed: () -> Unit) {
+        val config = AdRemoteConfigManager.config.value
+        val placement = config.interstitialSplash
+        val session = AdSessionManager.snapshot.value
+        val loaded = ad
+        if (!config.masterEnabled || !placement.enabled || !AdRuntime.canLoadAds() ||
+            !AdSessionManager.canShowNonRewarded(config) ||
+            (placement.maxPerSession > 0 && session.count(AdPlacement.INTERSTITIAL_SPLASH) >= placement.maxPerSession) ||
+            loaded == null || activity.isFinishing || activity.isDestroyed
+        ) {
+            proceed()
+            preload(activity)
+            return
+        }
+        if (!FullScreenAdCoordinator.tryAcquire(FullScreenAdType.NORMAL_INTERSTITIAL)) {
+            proceed()
+            preload(activity)
+            return
+        }
+        AdRuntimeReleaseLog.placementReady(AdPlacement.INTERSTITIAL_SPLASH.name)
+        AdRuntime.suppressNextAppOpen()
+        ad = null
+        adSource = null
+        var proceeded = false
+        fun continueOnce() {
+            if (!proceeded) {
+                proceeded = true
+                proceed()
+            }
+        }
+        loaded.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdShowedFullScreenContent() {
+                AdSessionManager.recordNonRewardedShown(AdPlacement.INTERSTITIAL_SPLASH)
+            }
+            override fun onAdDismissedFullScreenContent() {
+                FullScreenAdCoordinator.release(FullScreenAdType.NORMAL_INTERSTITIAL)
+                continueOnce()
+                preload(activity)
+            }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                FullScreenAdCoordinator.release(FullScreenAdType.NORMAL_INTERSTITIAL)
+                continueOnce()
+                preload(activity)
+            }
+        }
+        runCatching { loaded.show(activity) }.onFailure {
+            FullScreenAdCoordinator.release(FullScreenAdType.NORMAL_INTERSTITIAL)
+            continueOnce()
+            preload(activity)
+        }
     }
 }

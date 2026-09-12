@@ -18,6 +18,7 @@ import android.provider.Telephony
 import com.ap.messages.AppPermissionState
 import com.ap.messages.MainActivity
 import com.ap.messages.PendingChatDestination
+import com.ap.messages.ads.AdRemoteConfigManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +69,7 @@ fun AppNavigation(
         activity?.permissionState ?: MutableStateFlow(AppPermissionState())
     }
     val permissionState by permissionStateFlow.collectAsState()
+    val paywallEnabled by AdRemoteConfigManager.paywallEnabled.collectAsState()
     val initialPendingDestination = remember(activity) {
         activity?.pendingChatDestination?.value
     }
@@ -216,24 +218,34 @@ fun AppNavigation(
         ) {
             SplashScreen(
                 onPermissionFlow = {
-                    navController.navigate(
-                        Routes.Permission.route
-                    )
+                    val proceed = {
+                        navController.navigate(
+                            Routes.Permission.route
+                        )
+                    }
+                    activity?.let { host ->
+                        InterstitialAdManager.onSplashCompleted(host, proceed)
+                    } ?: proceed()
                 },
                 onDirectHome = {
-                    navController.navigate(
-                        if (permissionState.hasCoreMessagingAccess) {
-                            Routes.Home.route
-                        } else {
-                            Routes.Permission.route
-                        }
-                    ) {
-                        popUpTo(
-                            Routes.Splash.route
+                    val proceed = {
+                        navController.navigate(
+                            if (permissionState.hasCoreMessagingAccess) {
+                                Routes.Home.route
+                            } else {
+                                Routes.Permission.route
+                            }
                         ) {
-                            inclusive = true
+                            popUpTo(
+                                Routes.Splash.route
+                            ) {
+                                inclusive = true
+                            }
                         }
                     }
+                    activity?.let { host ->
+                        InterstitialAdManager.onSplashCompleted(host, proceed)
+                    } ?: proceed()
                 }
             )
         }
@@ -285,7 +297,7 @@ fun AppNavigation(
                     }
                 },
                 onPremiumClick = {
-                    if (navController.currentDestination?.route == Routes.Home.route) {
+                    if (paywallEnabled && navController.currentDestination?.route == Routes.Home.route) {
                         navigationInProgress.value = true
                         navController.navigate(Routes.Paywall.route) {
                             launchSingleTop = true
@@ -313,6 +325,11 @@ fun AppNavigation(
         }
 
         composable(Routes.Paywall.route) {
+            LaunchedEffect(paywallEnabled) {
+                if (!paywallEnabled) {
+                    navController.popBackStack()
+                }
+            }
             PaywallScreen(onBackClick = { navController.popBackStack() })
         }
 
@@ -341,9 +358,14 @@ fun AppNavigation(
             NewMessageScreen(
                 onBackClick = requestBack,
                 onContactClick = { name, phone ->
+                    val resolvedThreadId = try {
+                        Telephony.Threads.getOrCreateThreadId(context, phone)
+                    } catch (_: Exception) {
+                        0L
+                    }
                     runEligibleAdEvent(AutoInterstitialEvent.IN_APP_TAP) {
                         navController.navigate(
-                            "chat/0/" + "${Uri.encode(name)}/" + Uri.encode(phone)
+                            "chat/$resolvedThreadId/" + "${Uri.encode(name)}/" + Uri.encode(phone)
                         )
                     }
                 }

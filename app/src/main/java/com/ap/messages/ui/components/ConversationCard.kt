@@ -23,8 +23,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PushPin
@@ -136,20 +140,45 @@ fun ConversationCard(
                     modifier = Modifier.height(2.dp)
                 )
 
-                Text(
-                    text = conversation.body,
-                    fontSize = 12.sp,
-                    fontWeight = if (conversation.read) {
-                        FontWeight.Normal
-                    } else {
-                        FontWeight.SemiBold
-                    },
-                    color = MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (!conversation.draft.isNullOrBlank()) {
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(
+                                SpanStyle(
+                                    color = Color(0xFFE53935),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            ) {
+                                append("Draft: ")
+                            }
+                            withStyle(
+                                SpanStyle(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            ) {
+                                append(conversation.draft)
+                            }
+                        },
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Text(
+                        text = conversation.body,
+                        fontSize = 12.sp,
+                        fontWeight = if (conversation.read) {
+                            FontWeight.Normal
+                        } else {
+                            FontWeight.SemiBold
+                        },
+                        color = MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Spacer(

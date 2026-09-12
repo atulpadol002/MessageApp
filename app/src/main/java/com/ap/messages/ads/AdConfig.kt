@@ -41,12 +41,15 @@ data class AdConfig(
     val masterEnabled: Boolean = false,
     val homeBanner: ToggleConfig = ToggleConfig(),
     val homeInlineNative: NativeFeedConfig = NativeFeedConfig(),
+    val searchNative: CappedConfig = CappedConfig(),
+    val archiveBanner: ToggleConfig = ToggleConfig(),
     val archiveNative: PositionedCappedConfig = PositionedCappedConfig(),
     val scheduleBanner: ToggleConfig = ToggleConfig(),
     val serviceChatNative: CappedConfig = CappedConfig(),
     val blockedBanner: ToggleConfig = ToggleConfig(),
     val starredBanner: ToggleConfig = ToggleConfig(),
     val interstitial: InterstitialConfig = InterstitialConfig(),
+    val interstitialSplash: CappedConfig = CappedConfig(),
     val onboardingInterstitial: CappedConfig = CappedConfig(),
     val appOpen: AppOpenConfig = AppOpenConfig(),
     val rewarded: RewardedConfig = RewardedConfig(),
@@ -54,6 +57,10 @@ data class AdConfig(
     val exitDialogBanner: ToggleConfig = ToggleConfig(),
     val chatBanner: ToggleConfig = ToggleConfig(),
     val chatNative: ToggleConfig = ToggleConfig(),
+    val contactPickerBanner: ToggleConfig = ToggleConfig(),
+    val settingsBanner: ToggleConfig = ToggleConfig(),
+    val aboutBanner: ToggleConfig = ToggleConfig(),
+    val permissionBanner: ToggleConfig = ToggleConfig(),
     val sessionMaxAds: Int = 0
 ) {
     companion object {
@@ -61,60 +68,66 @@ data class AdConfig(
 
         fun parse(masterEnabled: Boolean, json: String): AdConfig? = runCatching {
             val root = JSONObject(json)
-            val homeBanner = root.requiredToggle("homeBanner")
-            val homeNative = root.getJSONObject("homeInlineNative")
-            val archiveNative = root.getJSONObject("archiveNative")
-            val interstitial = root.getJSONObject("interstitial")
-            val onboarding = root.getJSONObject("onboardingInterstitial")
-            val appOpen = root.getJSONObject("appOpen")
-            val rewarded = root.getJSONObject("rewarded")
-            val session = root.getJSONObject("session")
+            val homeBanner = root.optionalToggle("homeBanner", default = true)
+            val homeNative = root.optJSONObject("homeInlineNative")
+            val archiveNative = root.optJSONObject("archiveNative")
+            val interstitial = root.optJSONObject("interstitial")
+            val onboarding = root.optJSONObject("onboardingInterstitial")
+            val appOpen = root.optJSONObject("appOpen")
+            val rewarded = root.optJSONObject("rewarded")
+            val session = root.optJSONObject("session")
 
             AdConfig(
                 masterEnabled = masterEnabled,
                 homeBanner = homeBanner,
                 homeInlineNative = NativeFeedConfig(
-                    enabled = homeNative.getBoolean("enabled"),
-                    everyItems = homeNative.positiveInt("everyItems"),
-                    maxPerSession = homeNative.nonNegativeInt("maxPerSession")
+                    enabled = homeNative?.optBoolean("enabled", true) ?: true,
+                    everyItems = homeNative?.optInt("everyItems", 7)?.coerceAtLeast(1) ?: 7,
+                    maxPerSession = homeNative?.optInt("maxPerSession", 5)?.coerceAtLeast(0) ?: 5
                 ),
+                searchNative = root.optionalCapped("searchNative", defaultEnabled = true, defaultMax = 5),
+                archiveBanner = root.optionalToggle("archiveBanner", default = true),
                 archiveNative = PositionedCappedConfig(
-                    archiveNative.getBoolean("enabled"),
-                    archiveNative.nonNegativeInt("maxPerSession"),
-                    archiveNative.optionalPosition("position")
+                    archiveNative?.optBoolean("enabled", true) ?: true,
+                    archiveNative?.optInt("maxPerSession", 5)?.coerceAtLeast(0) ?: 5,
+                    archiveNative?.optionalPosition("position") ?: AdPosition.TOP
                 ),
-                scheduleBanner = root.optionalToggle("scheduleBanner"),
-                serviceChatNative = root.optionalCapped("serviceChatNative"),
-                blockedBanner = root.requiredToggle("blockedBanner"),
-                starredBanner = root.requiredToggle("starredBanner"),
+                scheduleBanner = root.optionalToggle("scheduleBanner", default = true),
+                serviceChatNative = root.optionalCapped("serviceChatNative", defaultEnabled = true, defaultMax = 5),
+                blockedBanner = root.optionalToggle("blockedBanner", default = true),
+                starredBanner = root.optionalToggle("starredBanner", default = true),
                 interstitial = InterstitialConfig(
-                    enabled = interstitial.getBoolean("enabled"),
-                    frequency = interstitial.positiveInt("frequency"),
-                    minIntervalSeconds = interstitial.nonNegativeLong("minIntervalSeconds"),
-                    maxPerSession = interstitial.nonNegativeInt("maxPerSession")
+                    enabled = interstitial?.optBoolean("enabled", true) ?: true,
+                    frequency = interstitial?.optInt("frequency", 3)?.coerceAtLeast(1) ?: 3,
+                    minIntervalSeconds = interstitial?.optLong("minIntervalSeconds", 30L)?.coerceAtLeast(0L) ?: 30L,
+                    maxPerSession = interstitial?.optInt("maxPerSession", 5)?.coerceAtLeast(0) ?: 5
                 ),
+                interstitialSplash = root.optionalCapped("interstitialSplash", defaultEnabled = true, defaultMax = 1),
                 onboardingInterstitial = CappedConfig(
-                    onboarding.getBoolean("enabled"),
-                    onboarding.nonNegativeInt("maxPerSession")
+                    onboarding?.optBoolean("enabled", true) ?: true,
+                    onboarding?.optInt("maxPerSession", 1)?.coerceAtLeast(0) ?: 1
                 ),
                 appOpen = AppOpenConfig(
-                    enabled = appOpen.getBoolean("enabled"),
-                    showAfterOnboarding = appOpen.optBoolean("showAfterOnboarding", false),
-                    // Older configs showed App Open on resume whenever the placement was enabled.
-                    showOnResume = appOpen.optBoolean("showOnResume", true),
-                    minIntervalSeconds = appOpen.nonNegativeLong("minIntervalSeconds"),
-                    maxPerSession = appOpen.nonNegativeInt("maxPerSession")
+                    enabled = appOpen?.optBoolean("enabled", true) ?: true,
+                    showAfterOnboarding = appOpen?.optBoolean("showAfterOnboarding", false) ?: false,
+                    showOnResume = appOpen?.optBoolean("showOnResume", true) ?: true,
+                    minIntervalSeconds = appOpen?.optLong("minIntervalSeconds", 30L)?.coerceAtLeast(0L) ?: 30L,
+                    maxPerSession = appOpen?.optInt("maxPerSession", 5)?.coerceAtLeast(0) ?: 5
                 ),
                 rewarded = RewardedConfig(
-                    restoreEnabled = rewarded.getBoolean("restoreEnabled"),
-                    deleteForeverEnabled = rewarded.getBoolean("deleteForeverEnabled"),
-                    maxPerSession = rewarded.nonNegativeInt("maxPerSession")
+                    restoreEnabled = rewarded?.optBoolean("restoreEnabled", true) ?: true,
+                    deleteForeverEnabled = rewarded?.optBoolean("deleteForeverEnabled", true) ?: true,
+                    maxPerSession = rewarded?.optInt("maxPerSession", 10)?.coerceAtLeast(0) ?: 10
                 ),
-                rateUsBanner = root.requiredToggle("rateUsBanner"),
-                exitDialogBanner = root.requiredToggle("exitDialogBanner"),
-                chatBanner = root.requiredToggle("chatBanner"),
-                chatNative = root.requiredToggle("chatNative"),
-                sessionMaxAds = session.nonNegativeInt("maxAds")
+                rateUsBanner = root.optionalToggle("rateUsBanner", default = false),
+                exitDialogBanner = root.optionalToggle("exitDialogBanner", default = true),
+                chatBanner = root.optionalToggle("chatBanner", default = true),
+                chatNative = root.optionalToggle("chatNative", default = false),
+                contactPickerBanner = root.optionalToggle("contactPickerBanner", default = true),
+                settingsBanner = root.optionalToggle("settingsBanner", default = true),
+                aboutBanner = root.optionalToggle("aboutBanner", default = true),
+                permissionBanner = root.optionalToggle("permissionBanner", default = true),
+                sessionMaxAds = session?.optInt("maxAds", 20)?.coerceAtLeast(0) ?: 20
             )
         }.onFailure { error ->
             AdDebug.log {
@@ -127,15 +140,15 @@ data class AdConfig(
 private fun JSONObject.requiredToggle(name: String) =
     ToggleConfig(getJSONObject(name).getBoolean("enabled"))
 
-private fun JSONObject.optionalToggle(name: String): ToggleConfig =
-    optJSONObject(name)?.let { ToggleConfig(it.optBoolean("enabled", false)) } ?: ToggleConfig()
+private fun JSONObject.optionalToggle(name: String, default: Boolean = false): ToggleConfig =
+    optJSONObject(name)?.let { ToggleConfig(it.optBoolean("enabled", default)) } ?: ToggleConfig(default)
 
-private fun JSONObject.optionalCapped(name: String): CappedConfig {
-    val value = optJSONObject(name) ?: return CappedConfig()
-    val maxPerSession = value.optInt("maxPerSession", 0)
+private fun JSONObject.optionalCapped(name: String, defaultEnabled: Boolean = false, defaultMax: Int = 0): CappedConfig {
+    val value = optJSONObject(name) ?: return CappedConfig(defaultEnabled, defaultMax)
+    val maxPerSession = value.optInt("maxPerSession", defaultMax)
     return CappedConfig(
-        enabled = value.optBoolean("enabled", false),
-        maxPerSession = maxPerSession.takeIf { it >= 0 } ?: 0
+        enabled = value.optBoolean("enabled", defaultEnabled),
+        maxPerSession = maxPerSession.takeIf { it >= 0 } ?: defaultMax
     )
 }
 
